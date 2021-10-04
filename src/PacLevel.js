@@ -9,8 +9,6 @@ class PacLevel {
     edgeLoops = {};
 
     pacMan = {
-        startTile: {row: 23, col: 6},
-        destTile: {row: 23, col: 7},
         progress: 0,
         speed: .13
     }
@@ -36,8 +34,8 @@ class PacLevel {
             return row.map((tile) =>
                 ({
                     isWall: tile === 1,
-                    isPathway: [-2, -1, 0].includes(tile),
-                    isTeleport: tile > 1,
+                    isPathway: tile !== 1,
+                    isTeleport: (tile > 1) ? tile : false,
                     hasFood: tile === 0,
                     hasPellet: tile === -2,
                 })
@@ -53,14 +51,28 @@ class PacLevel {
 
     addBorders() {
         // Important to ensure every object is unique in memory - hence fill + map, instead of just fill
-        const createBorderRow = () => new Array(this.gridWidth).fill(0).map(() => ({isWall: true, isBorder: true}));
+        const createBorderRow = () => new Array(this.gridWidth).fill(0).map(() => ({isWall: true}));
 
         this.grid.unshift(createBorderRow());
         this.grid.push(createBorderRow());
 
         this.grid.forEach((row) => {
-            row.unshift({isWall: !row[0].isTeleport, isBorder: true});
-            row.push({isWall: !row[row.length - 1].isTeleport, isBorder: true});
+            const newTile = {};
+
+            const createBorderTile = (oldTile) => {
+                const newTile = {};
+                if (oldTile.isTeleport) {
+                    newTile.isTeleport = oldTile.isTeleport;
+                    newTile.isPathway = true;
+                    oldTile.isTeleport = false;
+                } else {
+                    newTile.isWall = true;
+                }
+                return newTile;
+            }
+
+            row.unshift(createBorderTile(row[0]));
+            row.push(createBorderTile(row[row.length - 1]));
         });
 
         this.gridHeight += 2;
@@ -330,18 +342,36 @@ class PacLevel {
     update() {
         if (this.pacMan.progress < 1) this.pacMan.progress += this.pacMan.speed;
         else {
-            const {destTile} = this.pacMan;
+            let {destTile} = this.pacMan;
             destTile.hasFood = false;
             destTile.hasPellet = false;
 
+            // Find matching teleport
+            if (destTile.isTeleport > 1) {
+                destTile = this.findMatchingTeleport(destTile) || destTile;
+            }
+
             const {row, col} = destTile;
             const newDest = getRandomItem(this.getNeighbors(row, col).filter((tile) => tile.isPathway && tile !== this.pacMan.startTile));
-            [this.pacMan.startTile, this.pacMan.destTile] = [this.pacMan.destTile, newDest || this.pacMan.startTile];
+            [this.pacMan.startTile, this.pacMan.destTile] = [destTile, newDest || this.pacMan.startTile];
             this.pacMan.progress = 0;
         }
     }
 
+    findMatchingTeleport(startTile) {
+        for (let i = 0; i < this.gridHeight; i++) {
+            for (let j = 0; j < this.gridWidth; j++) {
+                const tile = this.grid[i][j];
+                if (tile !== startTile && tile.isTeleport === startTile.isTeleport) return tile;
+            }
+        }
+        return null;
+    }
+
     startAnimating () {
+        this.pacMan.startTile = this.grid[23][14];
+        this.pacMan.destTile = this.grid[23][15];
+
         const ctx = this.$canvas[0].getContext('2d');
         const animate = () => {
             ctx.clearRect(0, 0, this.$canvas.attr('width'), this.$canvas.attr('height'));
