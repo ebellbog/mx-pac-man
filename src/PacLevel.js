@@ -22,7 +22,12 @@ class PacLevel {
 
         this.analyzeGrid();
 
-        this.setupCanvas($canvas);
+        this.$canvas = $canvas;
+        $(window).on('resize', () => {
+            this.setupCanvas();
+        });
+        this.setupCanvas();
+
         this.startAnimating();
     }
 
@@ -154,31 +159,36 @@ class PacLevel {
         return neighbors;
     }
 
-    setupCanvas($canvas) {
-        const canvasWidth = $canvas.innerWidth();
-        const canvasHeight = $canvas.innerHeight();
+    setupCanvas() {
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
 
-        const canvasAspect = canvasWidth / canvasHeight;
+        const screenAspect = screenWidth / screenHeight;
         const gridAspect = this.gridWidth / this.gridHeight;
 
-        if (canvasAspect > gridAspect) {
+        if (screenAspect > gridAspect) {
             // Vertically constrained
-            this.tileSize = canvasHeight / this.gridHeight;
+            this.tileSize = screenHeight / this.gridHeight;
+            this.$canvas.css({
+                height: '93vh',
+                width: 'auto',
+            });
         } else {
             // Horizontally constrained
-            this.tileSize = canvasWidth / this.gridWidth;
+            this.tileSize = screenWidth / this.gridWidth;
+            this.$canvas.css({
+                height: 'auto',
+                width: '93vw',
+            });
         }
 
         const width = this.tileSize * this.gridWidth;
         const height = this.tileSize * this.gridHeight;
-        $canvas
+        this.$canvas
             .attr({
                 width: width / this.resolution,
                 height: height / this.resolution
-            })
-            .css({width, height});
-
-        this.$canvas = $canvas;
+            });
     }
 
     render() {
