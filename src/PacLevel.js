@@ -6,7 +6,16 @@ class PacLevel {
     tileSize = 0;
     resolution = 1.5;
 
-    constructor(gridData) {
+    edgeLoops = {};
+
+    pacMan = {
+        startTile: {row: 23, col: 6},
+        destTile: {row: 23, col: 7},
+        progress: 0,
+        speed: .13
+    }
+
+    constructor(gridData, $canvas) {
         this.grid = this.readGrid(gridData);
         this.validateGrid();
 
@@ -14,6 +23,9 @@ class PacLevel {
         this.numberGrid();
 
         this.analyzeGrid();
+
+        this.setupCanvas($canvas);
+        this.startAnimating();
     }
 
     readGrid(gridData) {
@@ -23,7 +35,8 @@ class PacLevel {
         return gridData.map((row) => {
             return row.map((tile) =>
                 ({
-                    isWall: (tile === 1),
+                    isWall: tile === 1,
+                    isPathway: [-2, -1, 0].includes(tile),
                     isTeleport: tile > 1,
                     hasFood: tile === 0,
                     hasPellet: tile === -2,
@@ -64,84 +77,45 @@ class PacLevel {
     }
 
     analyzeGrid() { 
-        // const clusters = [];
-        // let clusterIdx = 0, newCluster = [];
+        // Find edge loops by traversing grid sequentially, then taking a recursive detour whenever we reach a new edge
 
-        // const propFunc = (tile) => (tile.isWall && !tile.isVisited);
-        // const callback = (tile) => {
-        //     newCluster.push(tile);
-        //     tile.cluster = clusterIdx;
-        //     tile.isVisited = true;
+        const getNeighboringPathways = (tile) => tile.neighboringPathways || this.getNeighbors(tile.row, tile.col, true).filter((neighbor) => neighbor.isPathway);
 
-        //     
-        //     tile.isEdge = tile.neighboringPathways.length > 0;
-        // }
-
-        // Create wall clusters & mark neighboring pathways
-
-        // this.grid.forEach((row, rowIdx) => {
-        //     row.forEach((tile, colIdx) => {
-        //         if (propFunc(tile)) {
-        //             callback(tile);
-        //             this.traverseByProperty(rowIdx, colIdx, propFunc, callback);
-
-        //             clusters.push(newCluster);
-        //             newCluster = [];
-        //             clusterIdx++;
-        //         }
-        //     });
-        // });
-
-        // Construct edge loops
-
-        const getNeighboringPathways = (tile) => tile.neighboringPathways || this.getNeighbors(tile.row, tile.col, true).filter((neighbor) => !neighbor.isWall);
         this.grid.forEach((row) => {
             row.forEach((tile) => {
-                tile.neighboringPathways = getNeighboringPathways(tile);
-                if (tile.neighboringPathways.length > 0) {
-                    const neighboringWalls = this.getNeighbors(tile.row, tile.col).filter((neighbor) => neighbor.isWall);
-                    tile.connectedWalls = neighboringWalls.filter((wall) => {
-                        wall.neighboringPathways = getNeighboringPathways(wall);
-                        //!(wall.connectedWalls && wall.connectedWalls.includes(tile)) && // Prevent two-way connections
-                        return wall.neighboringPathways.some((pathway) => tile.neighboringPathways.includes(pathway));
-                    });
+                if (!tile.isWall || tile.isVisited) return;
 
-                    const {connectedWalls} = tile;
-                    if (connectedWalls.length === 2 && this.isVertical(tile, connectedWalls[0]) !== this.isVertical(tile, connectedWalls[1])) {
-                        tile.isCorner = true;
-                    }
+                tile.neighboringPathways = getNeighboringPathways(tile); // Only inspect "outer" walls, adjacent to pathways, which form the edge loop around a wall cluster
+                if (!tile.neighboringPathways.length) return;
+
+                this.edgeLoops[hashTile(tile)] = tile; // Cache first edge of each loop, for later rendering
+
+                const startingTile = tile;
+
+                while (tile && !tile.isVisited) {
+                    tile.isVisited = true;
+
+                    const neighoringWalls = this.getNeighbors(tile.row, tile.col).filter((neighbor) => neighbor.isWall); // All walls in orthogonal directions
+                    tile.nextEdge = neighoringWalls.filter((wall) => {
+                        if (wall.nextEdge === tile) return; // This was actually the previous wall in the edge loop, so don't backtrack
+
+                        wall.neighboringPathways = getNeighboringPathways(wall);
+                        return wall.neighboringPathways.some((pathway) => tile.neighboringPathways.includes(pathway)); // Test for edge adjacency (i.e. two edges bordering on the same path tile)
+                    })[0]; // The starting point in a loop will have two possible edges; choose only one
+
+
+                    // Prevent redundant start points for non-looping loops
+                    if (tile === startingTile && this.edgeLoops[hashTile(tile.nextEdge)])
+                        delete this.edgeLoops[hashTile(tile.nextEdge)];
+
+                    tile = tile.nextEdge;
                 }
+
+                startingTile.isLoop = startingTile === tile;
             });
         });
 
-        // Mark corners
-
-        // this.grid.forEach((row, rowIdx) => {
-        //     row.forEach((tile, colIdx) => {
-        //         const neighboringWalls = this.getNeighbors(tile.row, tile.col, true).filter((neighbor) => neighbor.isWall);
-        //         if (tile.isBorder) {
-        //             tile.isCorner = 
-        //                 [0, this.gridHeight - 1].includes(rowIdx) && [0, this.gridWidth - 1].includes(colIdx) || // Outer grid corners
-        //                 neighboringWalls.length === 4 || // Convex corner
-        //                 neighboringWalls.filter((wall) => wall.isBorder).length === 1; // Concave corner
-        //         } else {
-        //             tile.isCorner = neighboringWalls.length === 3 || (neighboringWalls.length === 7 && this.getNeighbors(tile.row, tile.col, true, true).filter((diagonal) => !diagonal.isWall).length > 0); // Convex corners & concave corners
-        //         }
-        //     });
-        // });
-
-    }
-
-    isVertical(start, end) { 
-        return start.col === end.col;
-    }
-
-    traverseByProperty(startRow, startCol, propFunc, callback) {
-        this.getNeighbors(startRow, startCol).forEach((tile) => {
-            if (!propFunc(tile)) return;
-            callback(tile);
-            this.traverseByProperty(tile.row, tile.col, propFunc, callback);
-        });
+        this.edgeLoops = Object.values(this.edgeLoops);
     }
 
     getNeighbors(row, col, includeDiagonals, onlyDiagonals) {
@@ -191,106 +165,208 @@ class PacLevel {
                 height: height / this.resolution
             })
             .css({width, height});
+
+        this.$canvas = $canvas;
     }
 
-    drawSimple($canvas) {
-        this.setupCanvas($canvas);
-        const ctx = $canvas[0].getContext('2d');
+    render() {
+        const ctx = this.$canvas[0].getContext('2d');
 
         const getCenter = (tile) => [(tile.col + .5) * this.tileSize / this.resolution, (tile.row + .5) * this.tileSize / this.resolution];
+        const isCorner = (tile) => tile.nextEdge && tile.nextEdge.nextEdge && isVertical(tile, tile.nextEdge) !== isVertical(tile.nextEdge, tile.nextEdge.nextEdge);
+        const drawEdge = (tile) => {
+            if (isCorner(tile)) {
+                // Corners will always have one vertical edge and one horizontal edge that meet
+                // Here we determine which is which
+                let verticalWall, horizontalWall;
+                if (isVertical(tile, tile.nextEdge)) {
+                    verticalWall = tile;
+                    horizontalWall = tile.nextEdge.nextEdge;
+                } else {
+                    horizontalWall = tile;
+                    verticalWall = tile.nextEdge.nextEdge;
+                };
 
-        this.grid.forEach((row, rowIdx) => {
-            row.forEach((tile, colIdx) => {
-                if (tile.isWall && tile.connectedWalls) {
-                    ctx.strokeStyle = '#2121de';
-                    ctx.lineWidth = this.tileSize / (6 * this.resolution);
-                    ctx.lineCap = 'round';
+                const tileCenter = getCenter(tile.nextEdge);
+                const centerDelta = this.tileSize / (2 * this.resolution); // Distance to shift center of arc, for drawing rounded corners
 
-                    ctx.beginPath();
-                    if (tile.isCorner && tile.connectedWalls) {
-                        const {connectedWalls} = tile;
+                let isUpperArc = false, isLeftArc = false;
 
-                        let verticalWall, horizontalWall;
-                        if (this.isVertical(tile, connectedWalls[0])) {
-                            verticalWall = connectedWalls[0];
-                            horizontalWall = connectedWalls[1];
-                        } else {
-                            horizontalWall = connectedWalls[0];
-                            verticalWall = connectedWalls[1];
-                        };
+                // Determine upper vs lower corner
+                if (verticalWall.row < tile.nextEdge.row) {
+                    tileCenter[1] -= centerDelta;
+                }
+                else {
+                    tileCenter[1] += centerDelta;
+                    isUpperArc = true;
+                }
 
-                        const tileCenter = getCenter(tile);
+                // Determine left vs right corner
+                if (horizontalWall.col < tile.nextEdge.col) {
+                    tileCenter[0] -= centerDelta;
+                }
+                else {
+                    tileCenter[0] += centerDelta;
+                    isLeftArc = true;
+                }
 
-                        let isUpperArc = false, isLeftArc = false;
-                        const centerDelta = this.tileSize / (2 * this.resolution);
+                // Set angles based on quadrant
+                const quarterArc = Math.PI / 2;
+                let factor = (isUpperArc) ?
+                    (isLeftArc) ? 2 : 3 :
+                    (isLeftArc) ? 1 : 4;
 
-                        if (verticalWall.row < tile.row) {
-                            tileCenter[1] -= centerDelta;
-                        }
-                        else {
-                            tileCenter[1] += centerDelta;
-                            isUpperArc = true;
-                        }
+                let arcStart = quarterArc * factor;
+                let arcEnd = arcStart + quarterArc;
 
-                        if (horizontalWall.col < tile.col) {
-                            tileCenter[0] -= centerDelta;
-                            isLeftArc = true;
-                        }
-                        else {
-                            tileCenter[0] += centerDelta;
-                        }
+                let isCounterClockwise = (isUpperArc) ?
+                    tile.col > tile.nextEdge.nextEdge.col :
+                    tile.col < tile.nextEdge.nextEdge.col;
+                if (isCounterClockwise) {
+                    [arcStart, arcEnd] = [arcEnd, arcStart];
+                }
+                ctx.arc(...tileCenter, centerDelta, arcStart, arcEnd, isCounterClockwise);
+            } else {
+                ctx.lineTo(...getCenter(tile.nextEdge));
+            }
+        }
 
-                        const quarterArc = Math.PI / 2;
-                        let factor = (isUpperArc) ? 
-                            (isLeftArc) ? 3 : 2 :
-                            (isLeftArc) ? 4 : 1;
-                        const arcStart = quarterArc * factor;
-                        const arcEnd = arcStart + quarterArc;
+        const gradient = ctx.createLinearGradient(0, 0, 0, this.gridHeight * this.tileSize / this.resolution);
+        gradient.addColorStop(0, 'cyan');
+        gradient.addColorStop(0.25, '#ff9797');
+        gradient.addColorStop(.5, 'white');
+        gradient.addColorStop(0.75, '#ff9797');
+        gradient.addColorStop(1, 'cyan');
 
-                        ctx.arc(...tileCenter, centerDelta, arcStart, arcEnd);
-                    } else {
-                        tile.connectedWalls.forEach((wall) => {
-                            const tileCenter = getCenter(tile);
-                            const wallCenter = getCenter(wall);
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = this.tileSize / (6 * this.resolution);
+        ctx.lineCap = 'round';
 
-                            if (wall.isCorner) {
-                                wallCenter[0] = (wallCenter[0] + tileCenter[0]) / 2;
-                                wallCenter[1] = (wallCenter[1] + tileCenter[1]) / 2;
-                            }
+        // Draw walls
 
-                            ctx.moveTo(...tileCenter);
-                            ctx.lineTo(...wallCenter);
-                        });
-                    }
-                    ctx.stroke();
-                } else if (tile.hasFood || tile.hasPellet) {
-                    ctx.fillStyle = '#ffb897';
+        this.edgeLoops.forEach((startingEdge) => {
+            const startingCenter = getCenter(startingEdge);
+            const centerDelta = this.tileSize / (2 * this.resolution);
 
+            if (startingEdge.isLoop) {
+                if (!isVertical(startingEdge, startingEdge.nextEdge)) {
+                    startingCenter[0] += centerDelta;
+                } else {
+                    startingCenter[1] -= centerDelta;
+                }
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(...startingCenter);
+
+            let currentEdge = startingEdge;
+
+            const didDraw = {};
+            while (currentEdge.nextEdge && !didDraw[hashTile(currentEdge)]) {
+                drawEdge(currentEdge);
+                didDraw[hashTile(currentEdge)] = true;
+                currentEdge = currentEdge.nextEdge;
+            }
+
+            if (currentEdge === startingEdge) {
+                ctx.globalAlpha = 0.75;
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            ctx.stroke();
+        });
+
+        // Draw food & pellets
+
+        this.grid.forEach((row) => {
+            row.forEach((tile) => {
+                if (tile.hasFood || tile.hasPellet) {
                     ctx.beginPath();
 
                     const center = getCenter(tile);
                     if (tile.hasPellet) {
-                        ctx.arc(...center, this.tileSize / (this.resolution * 2.5), 0, Math.PI * 2);
+                        if (Math.floor(Date.now() / 350) % 2)
+                            ctx.arc(...center, this.tileSize / (this.resolution * 2.5), 0, Math.PI * 2);
                     } else {
                         const size = this.tileSize / (this.resolution * 4.5);
                         ctx.rect(center[0] - size / 2, center[1] - size / 2, size, size);
                     }
 
+                    ctx.fillStyle = '#ffb897';
                     ctx.fill();
                 }
             });
         });
+
+        // Draw Mx. Pac-Man
+
+        const {startTile, destTile} = this.pacMan;
+        const mouthAngle = Math.abs(Math.sin(Date.now() / 80));
+
+        let rotation;
+        if (startTile.row > destTile.row) rotation = -Math.PI / 2;
+        else if (startTile.row < destTile.row) rotation = Math.PI / 2;
+        else rotation = (startTile.col < destTile.col) ? 0 : Math.PI;
+
+        const startAngle = mouthAngle + rotation;
+        const endAngle = Math.PI * 2 - mouthAngle + rotation;
+
+        const startCenter = getCenter(startTile);
+        const destCenter = getCenter(destTile);
+        const {progress} = this.pacMan;
+
+        const interpolate = (start, dest, progress) => start * (1 - progress) + dest * progress;
+        const center = [0, 1].map((idx) => interpolate(startCenter[idx], destCenter[idx], progress));
+
+        ctx.fillStyle = 'yellow';
+        ctx.beginPath();
+        ctx.moveTo(...center)
+        ctx.arc(...center, this.tileSize / (1.4 * this.resolution), startAngle, endAngle);
+        ctx.lineTo(...center);
+        ctx.fill();
     }
 
-    drawOutlined($canvas) {
-        const clusters = [];
+    update() {
+        if (this.pacMan.progress < 1) this.pacMan.progress += this.pacMan.speed;
+        else {
+            const {destTile} = this.pacMan;
+            destTile.hasFood = false;
+            destTile.hasPellet = false;
 
-        this.grid.forEach((row, rowIdx) => {
-            row.forEach((tile, colIdx) => {
-
-            });
-        });
+            const {row, col} = destTile;
+            const newDest = getRandomItem(this.getNeighbors(row, col).filter((tile) => tile.isPathway && tile !== this.pacMan.startTile));
+            [this.pacMan.startTile, this.pacMan.destTile] = [this.pacMan.destTile, newDest || this.pacMan.startTile];
+            this.pacMan.progress = 0;
+        }
     }
+
+    startAnimating () {
+        const ctx = this.$canvas[0].getContext('2d');
+        const animate = () => {
+            ctx.clearRect(0, 0, this.$canvas.attr('width'), this.$canvas.attr('height'));
+            this.render();
+            this.update();
+            window.requestAnimationFrame(animate);
+        }
+        animate();
+    }
+}
+
+function isVertical(start, end) { 
+    return (start && end && start.col === end.col);
+}
+
+function hashTile (tile) {
+    return (tile) ? `${tile.row}_${tile.col}` : null;
+}
+
+function getRandInt(min, max) {
+    return min + Math.round(Math.random() * (max - min));
+}
+
+function getRandomItem(items) {
+    return items[getRandInt(0, items.length - 1)];
 }
 
 export default PacLevel;
