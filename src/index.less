@@ -1,9 +1,16 @@
 body {
-    background-color: black;//#313166;
-    color: white;
-
     margin: 0;
     padding: 0;
+
+    color: white;
+    background-color: black;
+
+    &.embedded {
+        background-color: transparent;
+        #game {
+            filter: drop-shadow(1px 2px 4px fade(black, 50%));
+        }
+    }
 }
 
 #game {
