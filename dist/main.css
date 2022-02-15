@@ -1,8 +1,14 @@
 body {
-  background-color: black;
-  color: white;
   margin: 0;
   padding: 0;
+  color: white;
+  background-color: black;
+}
+body.embedded {
+  background-color: transparent;
+}
+body.embedded #game {
+  filter: drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.5));
 }
 #game {
   position: absolute;

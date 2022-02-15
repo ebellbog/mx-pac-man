@@ -41,8 +41,8 @@ class PacLevel {
                     isWall: tile === 1,
                     isPathway: tile !== 1,
                     isTeleport: (tile > 1) ? tile : false,
-                    hasFood: tile === 0,
-                    hasPellet: tile === -2,
+                    hasFood: (tile === 0) ? 1 : 0,
+                    hasPellet: (tile === -2) ? 1 : 0,
                 })
             );
         });
@@ -301,13 +301,15 @@ class PacLevel {
 
         // Draw food & pellets
 
+        let remainingEdibles = 0;
         this.grid.forEach((row) => {
             row.forEach((tile) => {
-                if (tile.hasFood || tile.hasPellet) {
+                if (tile.hasFood === 1 || tile.hasPellet === 1) {
+                    remainingEdibles++;
                     ctx.beginPath();
 
                     const center = getCenter(tile);
-                    if (tile.hasPellet) {
+                    if (tile.hasPellet === 1) {
                         if (Math.floor(Date.now() / 350) % 2)
                             ctx.arc(...center, this.tileSize / (this.resolution * 2.5), 0, Math.PI * 2);
                     } else {
@@ -320,6 +322,7 @@ class PacLevel {
                 }
             });
         });
+        if (remainingEdibles === 0) this.resetLevel();
 
         // Draw Mx. Pac-Man
 
@@ -353,8 +356,10 @@ class PacLevel {
         if (this.pacMan.progress < 1) this.pacMan.progress += this.pacMan.speed;
         else {
             let {destTile} = this.pacMan;
-            destTile.hasFood = false;
-            destTile.hasPellet = false;
+
+            // Eat food & pellets, while tracking which tiles previously contained them
+            destTile.hasFood = -Math.abs(destTile.hasFood);
+            destTile.hasPellet = -Math.abs(destTile.hasPellet);
 
             // Find matching teleport
             if (destTile.isTeleport > 1) {
@@ -378,7 +383,7 @@ class PacLevel {
         return null;
     }
 
-    startAnimating () {
+    startAnimating() {
         this.pacMan.startTile = this.grid[23][14];
         this.pacMan.destTile = this.grid[23][15];
 
@@ -391,6 +396,17 @@ class PacLevel {
         }
         animate();
     }
+
+    resetLevel() {
+        this.grid.forEach((row) => {
+            row.forEach((tile) => {
+                // If previously held food or pellet, these values will be -1 and get reset to 1 (ie true)
+                tile.hasPellet = Math.abs(tile.hasPellet);
+                tile.hasFood = Math.abs(tile.hasFood);
+            });
+        });
+    }
+
 }
 
 function isVertical(start, end) { 
