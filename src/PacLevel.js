@@ -4,7 +4,7 @@ class PacLevel {
     gridHeight = 0;
 
     tileSize = 0;
-    resolution = 1.5;
+    resolution = 1.3;
 
     edgeLoops = {};
 

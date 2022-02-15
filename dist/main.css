@@ -8,7 +8,10 @@ body.embedded {
   background-color: transparent;
 }
 body.embedded #game {
+  background-color: rgba(0, 0, 0, 0.3);
   filter: drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.5));
+  padding: 8px;
+  border-radius: 18px;
 }
 #game {
   position: absolute;
