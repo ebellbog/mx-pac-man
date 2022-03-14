@@ -1,19 +1,8 @@
 class PacLevel {
-    grid = null;
-    gridWidth = 0;
-    gridHeight = 0;
-
-    tileSize = 0;
-    resolution = 1.3;
-
-    edgeLoops = {};
-
-    pacMan = {
-        progress: 0,
-        speed: .13
-    }
 
     constructor(gridData, $canvas) {
+        this.declarePublicFields();
+
         this.grid = this.readGrid(gridData);
         this.validateGrid();
 
@@ -29,6 +18,23 @@ class PacLevel {
         this.setupCanvas();
 
         this.startAnimating();
+    }
+
+    // For compatibility with older browsers that don't support public class fields
+    declarePublicFields() {
+        this.grid = null;
+        this.gridWidth = 0;
+        this.gridHeight = 0;
+
+        this.tileSize = 0;
+        this.resolution = 1.3;
+
+        this.edgeLoops = {};
+
+        this.pacMan = {
+            progress: 0,
+            speed: .13
+        }
     }
 
     readGrid(gridData) {
